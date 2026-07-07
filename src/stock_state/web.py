@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
 from pathlib import Path
@@ -30,6 +31,9 @@ class StockStateRequestHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/brief":
             self._send_brief(parsed.query)
+            return
+        if parsed.path == "/api/watchlist":
+            self._send_watchlist(parsed.query)
             return
         if parsed.path.startswith("/static/"):
             self._send_static(parsed.path.removeprefix("/static/"))
@@ -64,45 +68,37 @@ class StockStateRequestHandler(BaseHTTPRequestHandler):
     def _send_brief(self, query: str) -> None:
         params = parse_qs(query)
         raw = (params.get("tickers") or params.get("ticker") or [""])[0]
-        tickers = [item.strip().upper() for item in raw.split(",") if item.strip()]
+        tickers = _parse_tickers(raw)
         refresh = (params.get("refresh") or ["0"])[0] in {"1", "true", "yes"}
         if not tickers:
             self._send_json({"error": "ticker is required"}, status=400)
             return
-        cards = []
-        failures: list[str] = []
-        provider = YFinanceProvider()
-        for ticker in tickers:
-            try:
-                cards.append(
-                    build_stock_state_card(
-                        ticker,
-                        provider,
-                        config=DEFAULTS,
-                        refresh=refresh,
-                    )
-                )
-            except Exception as exc:
-                failures.append(f"{ticker}: {exc}")
+        cards, failures = _load_cards(tickers, refresh=refresh)
         cross = compute_cross_section(cards, DEFAULTS)
         result = generate_brief(cards, cross_section=cross, refresh=refresh, config=DEFAULTS)
         self._send_json(
             {
-                "brief": {
-                    "text": result.text,
-                    "display_text": result.display_text,
-                    "available": result.available,
-                    "from_cache": result.from_cache,
-                    "provider": result.provider,
-                    "model": result.model,
-                    "error": result.error,
-                    "validation": None
-                    if result.validation is None
-                    else {
-                        "passed": result.validation.passed,
-                        "violations": result.validation.violations,
-                    },
-                },
+                "brief": _brief_payload(result),
+                "failures": failures,
+            }
+        )
+
+    def _send_watchlist(self, query: str) -> None:
+        params = parse_qs(query)
+        raw = (params.get("tickers") or [""])[0]
+        tickers = _parse_tickers(raw)
+        refresh = (params.get("refresh") or ["0"])[0] in {"1", "true", "yes"}
+        if not tickers:
+            self._send_json({"error": "tickers are required"}, status=400)
+            return
+        cards, failures = _load_cards(tickers, refresh=refresh)
+        cross = compute_cross_section(cards, DEFAULTS)
+        result = generate_brief(cards, cross_section=cross, refresh=refresh, config=DEFAULTS)
+        self._send_json(
+            {
+                "cards": {card.ticker: card.model_dump(mode="json") for card in cards},
+                "cross_section": cross,
+                "brief": _brief_payload(result),
                 "failures": failures,
             }
         )
@@ -152,6 +148,55 @@ def main(host: str, port: int) -> None:
         click.echo("shutting down")
     finally:
         server.server_close()
+
+
+def _parse_tickers(raw: str) -> list[str]:
+    seen: set[str] = set()
+    tickers: list[str] = []
+    for item in re.split(r"[\s,]+", raw):
+        ticker = item.strip().upper()
+        if ticker and ticker not in seen:
+            seen.add(ticker)
+            tickers.append(ticker)
+    return tickers
+
+
+def _load_cards(tickers: list[str], *, refresh: bool) -> tuple[list[object], list[str]]:
+    cards = []
+    failures: list[str] = []
+    provider = YFinanceProvider()
+    for ticker in tickers:
+        try:
+            cards.append(
+                build_stock_state_card(
+                    ticker,
+                    provider,
+                    config=DEFAULTS,
+                    refresh=refresh,
+                )
+            )
+        except Exception as exc:
+            failures.append(f"{ticker}: {exc}")
+    return cards, failures
+
+
+def _brief_payload(result: object) -> dict[str, object]:
+    validation = getattr(result, "validation", None)
+    return {
+        "text": result.text,
+        "display_text": result.display_text,
+        "available": result.available,
+        "from_cache": result.from_cache,
+        "provider": result.provider,
+        "model": result.model,
+        "error": result.error,
+        "validation": None
+        if validation is None
+        else {
+            "passed": validation.passed,
+            "violations": validation.violations,
+        },
+    }
 
 
 if __name__ == "__main__":

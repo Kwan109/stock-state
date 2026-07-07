@@ -136,6 +136,126 @@ h1 {
   color: var(--bad);
 }
 
+.watchlist-panel {
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.watchlist-header {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.55fr) minmax(360px, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+
+.watchlist-header strong {
+  display: block;
+  font-size: 17px;
+}
+
+.watchlist-form {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.watchlist-form label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.watchlist-form input {
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.watchlist-form button {
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.watchlist-form button:first-of-type {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+.watchlist-form button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.brief-content.compact {
+  padding-top: 0;
+}
+
+.watchlist-table-wrap {
+  overflow-x: auto;
+}
+
+.watchlist-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.watchlist-table th,
+.watchlist-table td {
+  border-top: 1px solid var(--line);
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.watchlist-table th {
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.ticker-link {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  padding: 0;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.table-failures,
+.table-empty {
+  border-top: 1px solid var(--line);
+  padding: 10px 16px;
+  color: var(--bad);
+  font-size: 12px;
+}
+
 .summary-band {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -611,6 +731,10 @@ h1 {
     grid-template-columns: auto 1fr auto auto;
   }
 
+  .watchlist-header {
+    grid-template-columns: 1fr;
+  }
+
   .summary-band {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -640,6 +764,15 @@ h1 {
 
   .ticker-form {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .watchlist-form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .watchlist-form label,
+  .watchlist-form input {
+    grid-column: span 2;
   }
 
   .ticker-form label {

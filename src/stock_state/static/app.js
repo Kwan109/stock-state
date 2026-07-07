@@ -4,6 +4,11 @@ const runButton = document.querySelector("#run-button");
 const refreshButton = document.querySelector("#refresh-button");
 const briefRefreshButton = document.querySelector("#brief-refresh");
 const statusNode = document.querySelector("#status");
+const watchlistForm = document.querySelector("#watchlist-form");
+const watchlistInput = document.querySelector("#watchlist-input");
+const watchlistRunButton = document.querySelector("#watchlist-run");
+const watchlistRefreshButton = document.querySelector("#watchlist-refresh");
+let busyDepth = 0;
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -18,10 +23,23 @@ briefRefreshButton.addEventListener("click", () => {
   loadBrief(input.value, true);
 });
 
+watchlistForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  loadWatchlist(false);
+});
+
+watchlistRefreshButton.addEventListener("click", () => {
+  loadWatchlist(true);
+});
+
 function setBusy(isBusy) {
-  runButton.disabled = isBusy;
-  refreshButton.disabled = isBusy;
-  briefRefreshButton.disabled = isBusy;
+  busyDepth = isBusy ? busyDepth + 1 : Math.max(0, busyDepth - 1);
+  const disabled = busyDepth > 0;
+  runButton.disabled = disabled;
+  refreshButton.disabled = disabled;
+  briefRefreshButton.disabled = disabled;
+  watchlistRunButton.disabled = disabled;
+  watchlistRefreshButton.disabled = disabled;
 }
 
 async function loadTicker(rawTicker, refresh) {
@@ -65,21 +83,127 @@ async function loadBrief(rawTicker, refresh) {
       throw new Error(payload.error || "brief request failed");
     }
     const brief = payload.brief || {};
-    const model = brief.provider && brief.model ? `${brief.provider} · ${brief.model}` : "local fallback";
-    status.textContent = brief.from_cache ? `${model} · cached` : model;
-    if (brief.validation && brief.validation.passed === false) {
-      status.className = "brief-status warning";
-      status.textContent = `叙述未通过忠实性校验 · ${brief.validation.violations.join("; ")}`;
-    }
-    if (!brief.available) {
-      status.className = "brief-status muted";
-      status.textContent = brief.error || "晨报不可用";
-    }
-    content.innerHTML = renderMarkdown(brief.display_text || brief.text || "晨报不可用");
+    renderBrief(brief, status, content);
   } catch (error) {
     status.className = "brief-status error";
     status.textContent = error.message;
   }
+}
+
+async function loadWatchlist(refresh) {
+  const tickers = parseTickers(watchlistInput.value);
+  const status = document.querySelector("#watchlist-status");
+  const briefNode = document.querySelector("#watchlist-brief");
+  const tableNode = document.querySelector("#watchlist-table");
+  if (!tickers.length) {
+    status.className = "brief-status error";
+    status.textContent = "请输入至少一个 ticker";
+    return;
+  }
+  setBusy(true);
+  status.className = "brief-status";
+  status.textContent = `${tickers.join(", ")} loading...`;
+  briefNode.innerHTML = "";
+  tableNode.innerHTML = "";
+  try {
+    const url = `/api/watchlist?tickers=${encodeURIComponent(tickers.join(","))}${refresh ? "&refresh=1" : ""}`;
+    const response = await fetch(url);
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || "watchlist request failed");
+    }
+    renderBrief(payload.brief || {}, status, briefNode);
+    renderWatchlistTable(payload.cards || {}, payload.cross_section || {}, payload.failures || []);
+  } catch (error) {
+    status.className = "brief-status error";
+    status.textContent = error.message;
+  } finally {
+    setBusy(false);
+  }
+}
+
+function renderBrief(brief, status, content) {
+  const model = brief.provider && brief.model ? `${brief.provider} · ${brief.model}` : "local fallback";
+  status.className = "brief-status";
+  status.textContent = brief.from_cache ? `${model} · cached` : model;
+  if (brief.validation && brief.validation.passed === false) {
+    status.className = "brief-status warning";
+    status.textContent = `叙述未通过忠实性校验 · ${brief.validation.violations.join("; ")}`;
+  }
+  if (!brief.available) {
+    status.className = "brief-status muted";
+    status.textContent = brief.error || "晨报不可用";
+  }
+  content.innerHTML = renderMarkdown(brief.display_text || brief.text || "晨报不可用");
+}
+
+function renderWatchlistTable(cardsByTicker, crossSection, failures) {
+  const node = document.querySelector("#watchlist-table");
+  const cards = Object.values(cardsByTicker).sort((left, right) => left.ticker.localeCompare(right.ticker));
+  if (!cards.length) {
+    node.innerHTML = failures.length ? `<div class="table-empty">${escapeHtml(failures.join("; "))}</div>` : "";
+    return;
+  }
+  node.innerHTML = `
+    <table class="watchlist-table">
+      <thead>
+        <tr>
+          <th>Ticker</th>
+          <th>Stance</th>
+          <th>Confidence</th>
+          <th>Flags</th>
+          <th>Close</th>
+          <th>Day</th>
+          <th>State</th>
+          <th>RS Rank</th>
+          <th>Attribution</th>
+          <th>Earnings</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${cards.map((card) => watchlistRow(card, crossSection[card.ticker] || {})).join("")}
+      </tbody>
+    </table>
+    ${failures.length ? `<div class="table-failures">${escapeHtml(failures.join("; "))}</div>` : ""}
+  `;
+  node.querySelectorAll("[data-ticker]").forEach((button) => {
+    button.addEventListener("click", () => loadTicker(button.dataset.ticker, false));
+  });
+}
+
+function watchlistRow(card, ranks) {
+  const judgement = card.judgement || {};
+  return `
+    <tr>
+      <td><button class="ticker-link" type="button" data-ticker="${escapeHtml(card.ticker)}">${escapeHtml(card.ticker)}</button></td>
+      <td>${escapeHtml(judgement.earnings_overlay ? `earnings_risk_event(${judgement.stance})` : judgement.stance || "-")}</td>
+      <td>${escapeHtml(`${judgement.confidence || "-"} · ${Number(judgement.confidence_score || 0).toFixed(2)}`)}</td>
+      <td>${escapeHtml((judgement.risk_flags || []).join(", ") || "none")}</td>
+      <td>${money(card.close)}</td>
+      <td class="${card.day_return_pct >= 0 ? "positive" : "negative"}">${pct(card.day_return_pct)}</td>
+      <td>${escapeHtml(card.volume_price.state)}</td>
+      <td>${rankText(ranks.rs_vs_qqq_pct_3m)}</td>
+      <td>${escapeHtml(card.attribution.classification)}</td>
+      <td>${value(card.days_to_next_earnings, 0)}</td>
+    </tr>
+  `;
+}
+
+function rankText(block) {
+  if (!block || block.rank == null) return "N/A";
+  return `${block.rank}/${block.n_effective}`;
+}
+
+function parseTickers(raw) {
+  const seen = new Set();
+  return raw
+    .split(/[,\s]+/)
+    .map((item) => item.trim().toUpperCase())
+    .filter((item) => {
+      if (!item || seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    });
 }
 
 function renderCard(card) {
@@ -484,3 +608,4 @@ function renderMarkdown(markdown) {
 }
 
 loadTicker(input.value, false);
+loadWatchlist(false);

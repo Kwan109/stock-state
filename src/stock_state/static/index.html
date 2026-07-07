@@ -26,6 +26,24 @@
 
       <section id="status" class="status" aria-live="polite"></section>
 
+      <section class="watchlist-panel">
+        <div class="watchlist-header">
+          <div>
+            <span class="eyebrow">Watchlist Morning Brief</span>
+            <strong>多票晨报与状态表</strong>
+          </div>
+          <form id="watchlist-form" class="watchlist-form">
+            <label for="watchlist-input">Tickers</label>
+            <input id="watchlist-input" value="AAPL, NVDA, KO, RKLB" autocomplete="off" spellcheck="false" />
+            <button id="watchlist-run" type="submit">Briefing</button>
+            <button id="watchlist-refresh" type="button">Regenerate</button>
+          </form>
+        </div>
+        <div id="watchlist-status" class="brief-status">输入一组 ticker，生成组合晨报和状态表。</div>
+        <div id="watchlist-brief" class="brief-content compact"></div>
+        <div id="watchlist-table" class="watchlist-table-wrap"></div>
+      </section>
+
       <section class="summary-band">
         <div>
           <span class="eyebrow">Ticker</span>

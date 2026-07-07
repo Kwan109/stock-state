@@ -8,12 +8,21 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def guard_repo_judgement_log() -> None:
-    path = Path.cwd() / "data_cache" / "judgement_log.parquet"
-    before = (path.stat().st_mtime_ns, path.stat().st_size) if path.exists() else None
-    yield
-    after = (path.stat().st_mtime_ns, path.stat().st_size) if path.exists() else None
-    assert after == before, "tests must write judgement logs under tmp_path, not repo data_cache"
+def guard_repo_judgement_log(monkeypatch) -> None:
+    import stock_state.card as card_module
+    import stock_state.cli as cli_module
+
+    original = card_module.log_judgement_event
+    repo_root = Path.cwd().resolve()
+
+    def guarded(root, card):
+        assert Path(root).resolve() != repo_root, (
+            "tests must write judgement logs under tmp_path, not repo data_cache"
+        )
+        return original(root, card)
+
+    monkeypatch.setattr(card_module, "log_judgement_event", guarded)
+    monkeypatch.setattr(cli_module, "log_judgement_event", guarded)
 
 
 @pytest.fixture

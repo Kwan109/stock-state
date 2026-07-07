@@ -79,11 +79,13 @@ stock-state-web --host 127.0.0.1 --port 8765
 Open the local UI at `http://127.0.0.1:8765`. It uses the same card builder as
 the CLI and exposes `GET /api/card?ticker=AAPL`.
 
-The UI includes a verdict band, profile-aware panel ordering
-(`momentum_leader`, `stable_compounder`, `pre_profit`, or `default`), and a
-Debug / Explain drawer. Explain-layer metrics such as MFI, EV/S,
-recommendation mean, target upside, and correlation uplift are kept out of the
-main decision surface and shown in that drawer with key thresholds and NA
+The UI includes a watchlist morning-brief panel, a single-ticker verdict band,
+profile-aware panel ordering (`momentum_leader`, `stable_compounder`,
+`pre_profit`, or `default`), and a Debug / Explain drawer. The watchlist panel
+accepts comma- or whitespace-separated tickers and returns the optional AI
+brief plus a stance/flags comparison table. Explain-layer metrics such as MFI,
+EV/S, recommendation mean, target upside, and correlation uplift are kept out of
+the main decision surface and shown in that drawer with key thresholds and NA
 reasons.
 
 ## AI Narrator
@@ -121,6 +123,12 @@ The default provider is Anthropic with `claude-sonnet-4-6`. OpenAI is available
 as a fallback provider. Without a key or when the API fails, the card/table still
 renders and the briefing shows a short unavailable message. Briefings are cached
 under `data_cache/briefings/` with the exact digest and meta audit files.
+
+The web UI exposes:
+
+- `GET /api/card?ticker=AAPL`
+- `GET /api/brief?ticker=AAPL`
+- `GET /api/watchlist?tickers=AAPL,NVDA,KO`
 
 Each single-card or watchlist run appends an idempotent row to
 `data_cache/judgement_log.parquet` with ticker, date, stance, flags, confidence,
