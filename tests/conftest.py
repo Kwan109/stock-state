@@ -1,8 +1,19 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def guard_repo_judgement_log() -> None:
+    path = Path.cwd() / "data_cache" / "judgement_log.parquet"
+    before = (path.stat().st_mtime_ns, path.stat().st_size) if path.exists() else None
+    yield
+    after = (path.stat().st_mtime_ns, path.stat().st_size) if path.exists() else None
+    assert after == before, "tests must write judgement logs under tmp_path, not repo data_cache"
 
 
 @pytest.fixture

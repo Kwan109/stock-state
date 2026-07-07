@@ -21,6 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest"]
+narrator = ["anthropic>=0.40", "openai>=1.0"]
 
 [project.scripts]
 stock-state = "stock_state.cli:main"

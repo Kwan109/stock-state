@@ -86,9 +86,48 @@ recommendation mean, target upside, and correlation uplift are kept out of the
 main decision surface and shown in that drawer with key thresholds and NA
 reasons.
 
+## AI Narrator
+
+The optional narrator layer turns the deterministic card or watchlist output
+into a short daily briefing. It is a narrator only: it receives a whitelisted
+digest of `judgement`, evidence, flags, contexts, and selected metrics. It does
+not see raw price history and cannot replace the rule-based stance.
+
+Install optional SDKs:
+
+```bash
+python3 -m pip install -e ".[narrator]"
+```
+
+Set one API key:
+
+```bash
+export ANTHROPIC_API_KEY=...
+# or
+export OPENAI_API_KEY=...
+```
+
+Usage:
+
+```bash
+stock-state AAPL --brief
+stock-state AAPL --brief-only
+stock-state --watchlist ws.yaml --table --brief
+stock-state --watchlist ws.yaml --brief-only
+stock-state AAPL --brief --narrator-provider openai
+```
+
+The default provider is Anthropic with `claude-sonnet-4-6`. OpenAI is available
+as a fallback provider. Without a key or when the API fails, the card/table still
+renders and the briefing shows a short unavailable message. Briefings are cached
+under `data_cache/briefings/` with the exact digest and meta audit files.
+
 Each single-card or watchlist run appends an idempotent row to
 `data_cache/judgement_log.parquet` with ticker, date, stance, flags, confidence,
 and judgement version. This file is intentionally ignored by git.
+
+Each AI briefing writes a paired `.md`, `.digest.json`, and `.meta.json` under
+`data_cache/briefings/`. These files are also ignored by git.
 
 Watchlist YAML can be either:
 

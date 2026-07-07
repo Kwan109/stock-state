@@ -27,6 +27,17 @@ The implementation keeps the original contracts:
 - Relative accumulation during market pressure cannot produce
   `actionable_long`; capitulation flushes remain `avoid_until_reclaim` until
   trend repair.
+- Accepted v2.1 deviations: capitulation handling is evaluated before
+  `breakdown_risk` because its definition already requires a deep/high-volume
+  flush; earnings-window actionable setups are conservatively downgraded to
+  `constructive_watch` while the overlay still renders the event wrapper.
+- Optional narrator-v1 layer summarizes deterministic card/watchlist outputs
+  from a whitelisted digest only. It never reads raw price series, never changes
+  stance, and is guarded by ticker/numeric/stance/directive/caveat validation.
+  Anthropic (`claude-sonnet-4-6`) is the default provider; OpenAI is available
+  as a provider override. API keys are read only from environment variables.
+- Narrator failures are non-blocking. Briefs are cached with paired digest and
+  meta audit files under ignored local cache.
 - Watchlist cross-section ranks are computed after cards are complete and do
   not mutate card bodies.
 

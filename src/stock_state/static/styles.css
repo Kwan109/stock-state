@@ -252,6 +252,91 @@ h1 {
   margin-top: 5px;
 }
 
+.brief-panel {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.brief-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-soft);
+}
+
+.brief-header strong {
+  display: block;
+  font-size: 16px;
+}
+
+.brief-header button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.brief-header button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.brief-status {
+  min-height: 28px;
+  padding: 8px 16px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.brief-status.warning,
+.brief-status.error {
+  color: var(--bad);
+}
+
+.brief-status.muted {
+  color: var(--warn);
+}
+
+.brief-content {
+  padding: 4px 16px 16px;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.brief-content h2 {
+  margin: 14px 0 6px;
+  font-size: 14px;
+}
+
+.brief-content p,
+.brief-content ul,
+.brief-content blockquote {
+  margin: 8px 0 0;
+}
+
+.brief-content ul {
+  padding-left: 18px;
+}
+
+.brief-content blockquote {
+  border-left: 3px solid var(--bad);
+  padding-left: 10px;
+  color: var(--bad);
+}
+
 .rule-path {
   margin-top: 10px;
   border-top: 1px solid var(--line);

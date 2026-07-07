@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from stock_state.card import build_stock_state_card
+from stock_state.card import build_card_from_inputs, build_stock_state_card, load_inputs
 from stock_state.cross_section import compute_cross_section
 
 
@@ -82,6 +82,22 @@ def test_card_builds_json_and_offline_cache(make_prices, tmp_path) -> None:
     assert offline.provenance.cache_hit is True
 
 
+def test_judgement_log_failure_warns_without_blocking(make_prices, tmp_path, monkeypatch, capsys) -> None:
+    provider = MockProvider(make_prices)
+
+    def fail_log(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("stock_state.card.log_judgement_event", fail_log)
+    card = build_stock_state_card("MOCK", provider, root=tmp_path)
+
+    captured = capsys.readouterr()
+    assert card.ticker == "MOCK"
+    assert "failed to write judgement log" in captured.err
+    assert "OSError: disk full" in captured.err
+    assert str(tmp_path / "data_cache" / "judgement_log.parquet") in captured.err
+
+
 def test_cross_section_is_outside_card_body(make_prices, tmp_path) -> None:
     provider = MockProvider(make_prices)
     card = build_stock_state_card("MOCK", provider, root=tmp_path)
@@ -91,3 +107,14 @@ def test_cross_section_is_outside_card_body(make_prices, tmp_path) -> None:
     assert "cross_section" not in dumped
     assert cross["MOCK"]["crowding_score"]["rank"] == 1
 
+
+def test_single_and_batch_card_body_are_byte_identical(make_prices, tmp_path) -> None:
+    provider = MockProvider(make_prices)
+    inputs = load_inputs("MOCK", provider, root=tmp_path)
+    single = build_card_from_inputs(inputs)
+    batch = build_card_from_inputs(inputs)
+    cross = compute_cross_section([batch])
+
+    assert single.model_dump_json() == batch.model_dump_json()
+    assert "cross_section" not in batch.model_dump(mode="json")
+    assert cross["MOCK"]["crowding_score"]["rank"] == 1

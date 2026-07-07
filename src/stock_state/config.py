@@ -69,6 +69,14 @@ class Defaults:
     JUDGEMENT_CONF_HIGH: float = 0.75
     JUDGEMENT_CONF_MEDIUM: float = 0.5
     JUDGEMENT_MIN_COVERAGE: float = 0.6
+    NARRATOR_ENABLED: bool = True
+    NARRATOR_PROVIDER: str = "anthropic"
+    NARRATOR_MODEL: str = "claude-sonnet-4-6"
+    NARRATOR_OPENAI_MODEL: str = "gpt-5.5"
+    NARRATOR_MAX_TOKENS: int = 1200
+    NARRATOR_TEMPERATURE: float = 0.2
+    NARRATOR_MAX_BRIEF_CHARS: int = 1600
+    NARRATOR_DIGEST_EVIDENCE_N: int = 3
     CS_RANK_FIELDS: tuple[str, ...] = (
         "crowding_score",
         "ep_yield",

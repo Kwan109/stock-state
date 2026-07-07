@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+import sys
 from typing import Any
 
 import pandas as pd
@@ -428,9 +429,18 @@ def build_stock_state_card(
     card = build_card_from_inputs(inputs, config=config)
     try:
         log_judgement_event(root, card)
-    except Exception:
-        pass
+    except Exception as exc:
+        warn_judgement_log_failure(root, exc)
     return card
+
+
+def warn_judgement_log_failure(root: Path | str, exc: Exception) -> None:
+    path = Path(root) / "data_cache" / "judgement_log.parquet"
+    print(
+        f"WARNING: failed to write judgement log at {path}: "
+        f"{type(exc).__name__}: {exc}",
+        file=sys.stderr,
+    )
 
 
 def build_card_from_inputs(

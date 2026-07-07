@@ -2,6 +2,7 @@ const form = document.querySelector("#ticker-form");
 const input = document.querySelector("#ticker-input");
 const runButton = document.querySelector("#run-button");
 const refreshButton = document.querySelector("#refresh-button");
+const briefRefreshButton = document.querySelector("#brief-refresh");
 const statusNode = document.querySelector("#status");
 
 form.addEventListener("submit", (event) => {
@@ -13,9 +14,14 @@ refreshButton.addEventListener("click", () => {
   loadTicker(input.value, true);
 });
 
+briefRefreshButton.addEventListener("click", () => {
+  loadBrief(input.value, true);
+});
+
 function setBusy(isBusy) {
   runButton.disabled = isBusy;
   refreshButton.disabled = isBusy;
+  briefRefreshButton.disabled = isBusy;
 }
 
 async function loadTicker(rawTicker, refresh) {
@@ -33,12 +39,46 @@ async function loadTicker(rawTicker, refresh) {
       throw new Error(payload.error || "request failed");
     }
     renderCard(payload.card);
+    loadBrief(ticker, refresh);
     statusNode.textContent = payload.card.provenance.stale ? "STALE cache data" : "";
   } catch (error) {
     statusNode.className = "status error";
     statusNode.textContent = error.message;
   } finally {
     setBusy(false);
+  }
+}
+
+async function loadBrief(rawTicker, refresh) {
+  const ticker = rawTicker.trim().toUpperCase();
+  if (!ticker) return;
+  const status = document.querySelector("#brief-status");
+  const content = document.querySelector("#brief-content");
+  status.className = "brief-status";
+  status.textContent = "loading...";
+  content.innerHTML = "";
+  try {
+    const url = `/api/brief?ticker=${encodeURIComponent(ticker)}${refresh ? "&refresh=1" : ""}`;
+    const response = await fetch(url);
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || "brief request failed");
+    }
+    const brief = payload.brief || {};
+    const model = brief.provider && brief.model ? `${brief.provider} · ${brief.model}` : "local fallback";
+    status.textContent = brief.from_cache ? `${model} · cached` : model;
+    if (brief.validation && brief.validation.passed === false) {
+      status.className = "brief-status warning";
+      status.textContent = `叙述未通过忠实性校验 · ${brief.validation.violations.join("; ")}`;
+    }
+    if (!brief.available) {
+      status.className = "brief-status muted";
+      status.textContent = brief.error || "晨报不可用";
+    }
+    content.innerHTML = renderMarkdown(brief.display_text || brief.text || "晨报不可用");
+  } catch (error) {
+    status.className = "brief-status error";
+    status.textContent = error.message;
   }
 }
 
@@ -421,6 +461,26 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function renderMarkdown(markdown) {
+  const html = escapeHtml(markdown || "")
+    .split(/\n{2,}/)
+    .map((block) => {
+      if (block.startsWith("## ")) {
+        return `<h2>${block.slice(3)}</h2>`;
+      }
+      if (block.startsWith("> ")) {
+        return `<blockquote>${block.slice(2)}</blockquote>`;
+      }
+      const lines = block.split("\n").filter(Boolean);
+      if (lines.every((line) => line.startsWith("- "))) {
+        return `<ul>${lines.map((line) => `<li>${line.slice(2)}</li>`).join("")}</ul>`;
+      }
+      return `<p>${lines.join("<br />")}</p>`;
+    })
+    .join("");
+  return html || "<p>-</p>";
 }
 
 loadTicker(input.value, false);

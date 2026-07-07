@@ -7,16 +7,19 @@ from typing import Any
 import click
 import yaml
 from rich.console import Console
+from rich.markdown import Markdown
 
 from stock_state.card import (
     build_card_from_inputs,
     build_history_rows,
     build_stock_state_card,
     load_inputs,
+    warn_judgement_log_failure,
 )
 from stock_state.cache import log_judgement_event
 from stock_state.config import DEFAULTS
 from stock_state.cross_section import compute_cross_section
+from stock_state.narrator.brief import BriefResult, generate_brief
 from stock_state.providers.base import ProviderError, ProviderNotAvailableError
 from stock_state.providers.ibkr_provider import IBKRProvider
 from stock_state.providers.yfinance_provider import YFinanceProvider
@@ -35,6 +38,10 @@ from stock_state.render import (
 @click.option("--table", "as_table", is_flag=True, help="Render watchlist comparison table.")
 @click.option("--history", type=int, help="Render recent N-day state timeline.")
 @click.option("--explain", type=click.Choice(["volume_price", "crowding", "valuation", "relative", "attribution", "fundamentals", "analyst", "judgement"]), help="Explain a family.")
+@click.option("--brief", is_flag=True, help="Generate an optional AI briefing.")
+@click.option("--brief-only", is_flag=True, help="Only print the AI briefing.")
+@click.option("--narrator-provider", type=click.Choice(["anthropic", "openai"]), help="AI briefing provider override.")
+@click.option("--narrator-model", help="AI briefing model override.")
 @click.option("--refresh", is_flag=True, help="Force cache refresh.")
 @click.option("--offline", is_flag=True, help="Read cache only.")
 @click.option("--provider", type=click.Choice(["yfinance", "ibkr"]), default="yfinance", show_default=True)
@@ -45,6 +52,10 @@ def main(
     as_table: bool,
     history: int | None,
     explain: str | None,
+    brief: bool,
+    brief_only: bool,
+    narrator_provider: str | None,
+    narrator_model: str | None,
     refresh: bool,
     offline: bool,
     provider: str,
@@ -57,6 +68,10 @@ def main(
             data_provider,
             as_json=as_json,
             as_table=as_table,
+            brief=brief or brief_only,
+            brief_only=brief_only,
+            narrator_provider=narrator_provider,
+            narrator_model=narrator_model,
             refresh=refresh,
             offline=offline,
             console=console,
@@ -87,10 +102,44 @@ def main(
             offline=offline,
         )
         if as_json:
-            click.echo(card.model_dump_json(indent=2))
+            payload: dict[str, Any] = {"card": card.model_dump(mode="json")}
+            if brief or brief_only:
+                cross = compute_cross_section([card], DEFAULTS)
+                result = generate_brief(
+                    [card],
+                    cross_section=cross,
+                    refresh=refresh,
+                    provider=narrator_provider,
+                    model=narrator_model,
+                    config=DEFAULTS,
+                )
+                payload["brief"] = _brief_payload(result)
+            click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        elif brief_only:
+            cross = compute_cross_section([card], DEFAULTS)
+            result = generate_brief(
+                [card],
+                cross_section=cross,
+                refresh=refresh,
+                provider=narrator_provider,
+                model=narrator_model,
+                config=DEFAULTS,
+            )
+            console.print(Markdown(result.display_text))
         elif explain:
             console.print(render_explain(card, explain))
         else:
+            if brief:
+                cross = compute_cross_section([card], DEFAULTS)
+                result = generate_brief(
+                    [card],
+                    cross_section=cross,
+                    refresh=refresh,
+                    provider=narrator_provider,
+                    model=narrator_model,
+                    config=DEFAULTS,
+                )
+                console.print(Markdown(result.display_text))
             console.print(render_card(card))
     except ProviderNotAvailableError as exc:
         raise click.ClickException(str(exc)) from exc
@@ -104,6 +153,10 @@ def _run_watchlist(
     *,
     as_json: bool,
     as_table: bool,
+    brief: bool,
+    brief_only: bool,
+    narrator_provider: str | None,
+    narrator_model: str | None,
     refresh: bool,
     offline: bool,
     console: Console,
@@ -123,23 +176,44 @@ def _run_watchlist(
             card = build_card_from_inputs(inputs, config=DEFAULTS)
             try:
                 log_judgement_event(".", card)
-            except Exception:
-                pass
+            except Exception as exc:
+                warn_judgement_log_failure(".", exc)
             cards.append(card)
         except Exception as exc:
             failures.append(f"{ticker}: {exc}")
     cross = compute_cross_section(cards, DEFAULTS)
+    brief_result: BriefResult | None = None
+    if brief and cards:
+        brief_result = generate_brief(
+            cards,
+            cross_section=cross,
+            refresh=refresh,
+            provider=narrator_provider,
+            model=narrator_model,
+            config=DEFAULTS,
+        )
     if as_json:
         payload = {
             "cards": {card.ticker: card.model_dump(mode="json") for card in cards},
             "cross_section": cross,
             "failures": failures,
         }
+        if brief_result is not None:
+            payload["brief"] = _brief_payload(brief_result)
         click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+    elif brief_only:
+        if brief_result is not None:
+            console.print(Markdown(brief_result.display_text))
+        else:
+            console.print("晨报不可用: no cards available for briefing")
     elif as_table:
+        if brief_result is not None:
+            console.print(Markdown(brief_result.display_text))
         console.print(render_watchlist_table(cards, cross))
         _print_failures(console, failures)
     else:
+        if brief_result is not None:
+            console.print(Markdown(brief_result.display_text))
         for card in cards:
             console.print(render_card(card))
         _print_failures(console, failures)
@@ -171,6 +245,23 @@ def _print_failures(console: Console, failures: list[str]) -> None:
     console.print("失败清单:", style="red")
     for failure in failures:
         console.print(f"- {failure}", style="red")
+
+
+def _brief_payload(result: BriefResult) -> dict[str, Any]:
+    return {
+        "text": result.text,
+        "available": result.available,
+        "from_cache": result.from_cache,
+        "provider": result.provider,
+        "model": result.model,
+        "error": result.error,
+        "validation": None
+        if result.validation is None
+        else {
+            "passed": result.validation.passed,
+            "violations": result.validation.violations,
+        },
+    }
 
 
 if __name__ == "__main__":

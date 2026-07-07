@@ -149,6 +149,29 @@ def test_hv_down_threshold_is_config_driven(make_prices) -> None:
     assert judgement.stance == "constructive_watch"
 
 
+def test_weak_rally_in_downtrend_has_no_clear_setup(make_prices) -> None:
+    judgement = _judge(
+        make_prices,
+        close=95,
+        volume_price=_vp(state="缩量上涨", sma50=90, sma200=100, pct_from_high=-0.25),
+    )
+    assert judgement.trend_state == "downtrend_rally"
+    assert judgement.tape_state == "weak_rally"
+    assert judgement.stance == "no_clear_setup"
+
+
+def test_degradation_matrix_market_only_and_missing_analyst(make_prices) -> None:
+    judgement = _judge(make_prices, sector=None, analyst=_analyst_all_na())
+    assert judgement.stance in {
+        "actionable_long",
+        "constructive_watch",
+        "wait_for_pullback",
+        "no_clear_setup",
+    }
+    assert judgement.confidence_score < 1.0
+    assert judgement.confidence in {"medium", "high"}
+
+
 def _judge(
     make_prices,
     *,
@@ -161,6 +184,8 @@ def _judge(
     close: float | None = None,
     prices: pd.DataFrame | None = None,
     market_prices: pd.DataFrame | None = None,
+    analyst: AnalystFamily | None = None,
+    sector: str | None = "Technology",
     config=DEFAULTS,
 ):
     prices = prices.copy() if prices is not None else make_prices(260, daily_return=0.001)
@@ -171,7 +196,7 @@ def _judge(
     return evaluate_judgement(
         as_of=pd.Timestamp("2026-01-01").date(),
         close=current_close,
-        sector="Technology",
+        sector=sector,
         prices=prices,
         market_prices=market,
         sector_prices=None,
@@ -181,7 +206,7 @@ def _judge(
         relative=relative or _relative(),
         attribution=attribution or _attribution("正常"),
         fundamentals=_fundamentals(),
-        analyst=_analyst(),
+        analyst=analyst or _analyst(),
         days_to_next_earnings=field(days_to_earnings, "missing earnings calendar")
         if days_to_earnings is not None
         else na("missing earnings calendar"),
@@ -298,4 +323,21 @@ def _analyst() -> AnalystFamily:
         eps_revision_90d_pct=field(0.02),
         eps_up_30d=field(3),
         eps_down_30d=field(1),
+    )
+
+
+def _analyst_all_na() -> AnalystFamily:
+    return AnalystFamily(
+        n_analysts=na("missing analyst coverage"),
+        rating_counts=None,
+        recommendation_mean=na("missing recommendation"),
+        target_mean=na("missing target"),
+        target_median=na("missing target"),
+        target_low=na("missing target"),
+        target_high=na("missing target"),
+        target_upside_pct=na("missing target"),
+        forward_pe=na("missing earnings estimate"),
+        eps_revision_90d_pct=na("missing eps_trend 90d history"),
+        eps_up_30d=na("missing eps_revisions"),
+        eps_down_30d=na("missing eps_revisions"),
     )

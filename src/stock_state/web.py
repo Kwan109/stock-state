@@ -11,6 +11,8 @@ import click
 
 from stock_state.card import build_stock_state_card
 from stock_state.config import DEFAULTS
+from stock_state.cross_section import compute_cross_section
+from stock_state.narrator.brief import generate_brief
 from stock_state.providers.base import ProviderError
 from stock_state.providers.yfinance_provider import YFinanceProvider
 
@@ -25,6 +27,9 @@ class StockStateRequestHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/card":
             self._send_card(parsed.query)
+            return
+        if parsed.path == "/api/brief":
+            self._send_brief(parsed.query)
             return
         if parsed.path.startswith("/static/"):
             self._send_static(parsed.path.removeprefix("/static/"))
@@ -55,6 +60,52 @@ class StockStateRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"error": str(exc)}, status=500)
             return
         self._send_json({"card": card.model_dump(mode="json")})
+
+    def _send_brief(self, query: str) -> None:
+        params = parse_qs(query)
+        raw = (params.get("tickers") or params.get("ticker") or [""])[0]
+        tickers = [item.strip().upper() for item in raw.split(",") if item.strip()]
+        refresh = (params.get("refresh") or ["0"])[0] in {"1", "true", "yes"}
+        if not tickers:
+            self._send_json({"error": "ticker is required"}, status=400)
+            return
+        cards = []
+        failures: list[str] = []
+        provider = YFinanceProvider()
+        for ticker in tickers:
+            try:
+                cards.append(
+                    build_stock_state_card(
+                        ticker,
+                        provider,
+                        config=DEFAULTS,
+                        refresh=refresh,
+                    )
+                )
+            except Exception as exc:
+                failures.append(f"{ticker}: {exc}")
+        cross = compute_cross_section(cards, DEFAULTS)
+        result = generate_brief(cards, cross_section=cross, refresh=refresh, config=DEFAULTS)
+        self._send_json(
+            {
+                "brief": {
+                    "text": result.text,
+                    "display_text": result.display_text,
+                    "available": result.available,
+                    "from_cache": result.from_cache,
+                    "provider": result.provider,
+                    "model": result.model,
+                    "error": result.error,
+                    "validation": None
+                    if result.validation is None
+                    else {
+                        "passed": result.validation.passed,
+                        "violations": result.validation.violations,
+                    },
+                },
+                "failures": failures,
+            }
+        )
 
     def _send_static(self, name: str) -> None:
         if "/" in name or ".." in name:
@@ -105,4 +156,3 @@ def main(host: str, port: int) -> None:
 
 if __name__ == "__main__":
     main()
-
