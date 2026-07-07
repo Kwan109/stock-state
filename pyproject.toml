@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stock-state"
+version = "0.1.0"
+description = "Daily stock state cards for US equities"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "yfinance>=0.2.40",
+  "pandas>=2.0",
+  "numpy",
+  "pyarrow",
+  "pydantic>=2",
+  "click",
+  "rich",
+  "PyYAML",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+stock-state = "stock_state.cli:main"
+stock-state-web = "stock_state.web:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+stock_state = ["static/*"]
+
+[tool.pytest.ini_options]
+markers = [
+  "network: tests that hit external market data providers",
+]
+testpaths = ["tests"]

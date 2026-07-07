@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Stock State</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">SS</div>
+          <div>
+            <h1>Stock State</h1>
+            <p id="provenance">yfinance · EOD_OR_DELAYED</p>
+          </div>
+        </div>
+        <form id="ticker-form" class="ticker-form">
+          <label for="ticker-input">Ticker</label>
+          <input id="ticker-input" name="ticker" value="AAPL" autocomplete="off" spellcheck="false" />
+          <button id="run-button" type="submit">Analyze</button>
+          <button id="refresh-button" type="button">Refresh</button>
+        </form>
+      </header>
+
+      <section id="status" class="status" aria-live="polite"></section>
+
+      <section class="summary-band">
+        <div>
+          <span class="eyebrow">Ticker</span>
+          <strong id="summary-ticker">-</strong>
+        </div>
+        <div>
+          <span class="eyebrow">As of</span>
+          <strong id="summary-date">-</strong>
+        </div>
+        <div>
+          <span class="eyebrow">Close</span>
+          <strong id="summary-close">-</strong>
+        </div>
+        <div>
+          <span class="eyebrow">Day</span>
+          <strong id="summary-day">-</strong>
+        </div>
+        <div>
+          <span class="eyebrow">Attribution</span>
+          <strong id="summary-classification">-</strong>
+        </div>
+      </section>
+
+      <section class="dashboard">
+        <section class="panel span-2" id="panel-attribution"></section>
+        <section class="panel" id="panel-volume"></section>
+        <section class="panel" id="panel-crowding"></section>
+        <section class="panel" id="panel-valuation"></section>
+        <section class="panel" id="panel-relative"></section>
+        <section class="panel" id="panel-fundamentals"></section>
+        <section class="panel" id="panel-analyst"></section>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
+
