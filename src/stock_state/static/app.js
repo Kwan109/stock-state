@@ -51,6 +51,7 @@ function renderCard(card) {
   text("#summary-day", pct(card.day_return_pct));
   colorSigned(document.querySelector("#summary-day"), card.day_return_pct);
   text("#summary-classification", card.attribution.classification);
+  renderVerdict(card);
 
   panel("panel-attribution", "今日归因", `${card.attribution.mode} · R2 ${value(card.attribution.r_squared, 2)}`, `
     <div class="component-list">
@@ -145,6 +146,39 @@ function panel(id, title, meta, body) {
     </div>
     ${body}
   `;
+}
+
+function renderVerdict(card) {
+  const judgement = card.judgement;
+  const headline = judgement.earnings_overlay
+    ? `earnings_risk_event(${judgement.stance})`
+    : judgement.stance;
+  text("#verdict-stance", headline);
+  text("#verdict-caveat", judgement.caveat);
+  text("#verdict-confidence", `${judgement.confidence} · ${Number(judgement.confidence_score).toFixed(2)}`);
+  text(
+    "#verdict-contexts",
+    `${judgement.trend_state} · ${judgement.tape_state} · ${judgement.rs_context} · ${judgement.attribution_context}`
+  );
+  document.querySelector("#risk-flags").innerHTML =
+    judgement.risk_flags.length
+      ? judgement.risk_flags.map((item) => chip(item)).join("")
+      : '<span class="chip muted-chip">none</span>';
+  document.querySelector("#evidence-list").innerHTML =
+    judgement.evidence.slice(0, 4).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+}
+
+function chip(item) {
+  const hard = [
+    "earnings_within_5d",
+    "extreme_crowding",
+    "extended_gt90",
+    "negative_revisions",
+    "amplifier_pattern",
+    "idio_bleed",
+    "valuation_very_rich",
+  ].includes(item);
+  return `<span class="chip ${hard ? "hard-chip" : ""}">${escapeHtml(item)}</span>`;
 }
 
 function component(label, field, note) {
@@ -243,4 +277,3 @@ function escapeHtml(value) {
 }
 
 loadTicker(input.value, false);
-

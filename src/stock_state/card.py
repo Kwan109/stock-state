@@ -8,7 +8,13 @@ from typing import Any
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, field_serializer, model_validator
 
-from stock_state.cache import CacheResult, get_or_fetch_frame, get_or_fetch_json, json_to_frames
+from stock_state.cache import (
+    CacheResult,
+    get_or_fetch_frame,
+    get_or_fetch_json,
+    json_to_frames,
+    log_judgement_event,
+)
 from stock_state.config import DEFAULTS, Defaults
 from stock_state.indicators import current_return
 from stock_state.providers.base import DataProvider, ProviderError
@@ -46,6 +52,12 @@ class VolumePriceFamily(BaseModel):
     momentum_3m: NAField
     momentum_6m: NAField
     momentum_12_1: NAField
+    sma50: NAField
+    sma200: NAField
+    pct_from_252d_high: NAField
+    days_below_sma200: NAField
+    hv_down_days_10d: NAField
+    hv_up_days_10d: NAField
 
 
 class CrowdingFamily(BaseModel):
@@ -120,6 +132,27 @@ class AnalystFamily(BaseModel):
     note: str = "snapshot-level consensus; limited history; coverage gaps possible"
 
 
+class JudgementBlock(BaseModel):
+    stance: str
+    earnings_overlay: bool
+    trend_state: str
+    tape_state: str
+    crowding_risk: str
+    valuation_context: str
+    rs_context: str
+    attribution_context: str
+    risk_flags: list[str]
+    entry_context: str
+    exit_context: str
+    confidence: str
+    confidence_score: float
+    evidence: list[str]
+    caveat: str = (
+        "规则型技术判读，未经前向收益验证；confidence 度量证据完整度，非盈利概率"
+    )
+    version: str = "judgement-v2.0"
+
+
 class StockStateCard(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -138,6 +171,7 @@ class StockStateCard(BaseModel):
     analyst: AnalystFamily
     days_to_next_earnings: NAField
     last_earnings_surprise_pct: NAField
+    judgement: JudgementBlock
     provenance: Provenance
 
     @field_serializer("as_of")
@@ -382,7 +416,12 @@ def build_stock_state_card(
         refresh=refresh,
         offline=offline,
     )
-    return build_card_from_inputs(inputs, config=config)
+    card = build_card_from_inputs(inputs, config=config)
+    try:
+        log_judgement_event(root, card)
+    except Exception:
+        pass
+    return card
 
 
 def build_card_from_inputs(
@@ -398,6 +437,7 @@ def build_card_from_inputs(
     from stock_state.families.relative import compute_relative
     from stock_state.families.valuation import compute_valuation
     from stock_state.families.volume_price import compute_volume_price
+    from stock_state.judgement.engine import evaluate_judgement
 
     prices = _slice_to_date(inputs.prices, as_of)
     market_prices = _slice_to_date(inputs.market_prices, as_of)
@@ -414,6 +454,50 @@ def build_card_from_inputs(
     close = float(prices["close"].iloc[-1])
     day_return = current_return(prices)
     attribution = compute_attribution(prices, market_prices, sector_prices, config)
+    volume_price = compute_volume_price(prices, config)
+    crowding = compute_crowding(prices, sector_prices, inputs.info, config)
+    valuation = compute_valuation(
+        prices,
+        _slice_statement(inputs.annual_financials, as_of_date),
+        _slice_statement(inputs.balance_sheet, as_of_date),
+        inputs.info,
+        config,
+    )
+    relative = compute_relative(
+        prices,
+        market_prices,
+        sector_prices,
+        attribution.classification,
+        config,
+    )
+    fundamentals = compute_fundamentals(
+        _slice_statement(inputs.annual_financials, as_of_date),
+        _slice_statement(inputs.quarterly_financials, as_of_date),
+        _slice_statement(inputs.balance_sheet, as_of_date),
+        inputs.info,
+        config,
+    )
+    analyst = compute_analyst(inputs.analyst_data, inputs.info, close, config)
+    days_to_next_earnings = _days_to_next_earnings(inputs.earnings_dates, as_of_date)
+    last_earnings_surprise_pct = _last_earnings_surprise(inputs.earnings_dates, as_of_date)
+    judgement = evaluate_judgement(
+        as_of=as_of_date,
+        close=close,
+        sector=inputs.sector,
+        prices=prices,
+        market_prices=market_prices,
+        sector_prices=sector_prices,
+        volume_price=volume_price,
+        crowding=crowding,
+        valuation=valuation,
+        relative=relative,
+        attribution=attribution,
+        fundamentals=fundamentals,
+        analyst=analyst,
+        days_to_next_earnings=days_to_next_earnings,
+        provenance_stale=inputs.stale,
+        config=config,
+    )
     return StockStateCard(
         ticker=inputs.ticker,
         as_of=as_of_date,
@@ -421,33 +505,16 @@ def build_card_from_inputs(
         day_return_pct=0.0 if day_return is None else day_return,
         sector=inputs.sector,
         sector_etf=inputs.sector_etf,
-        volume_price=compute_volume_price(prices, config),
-        crowding=compute_crowding(prices, sector_prices, inputs.info, config),
-        valuation=compute_valuation(
-            prices,
-            _slice_statement(inputs.annual_financials, as_of_date),
-            _slice_statement(inputs.balance_sheet, as_of_date),
-            inputs.info,
-            config,
-        ),
-        relative=compute_relative(
-            prices,
-            market_prices,
-            sector_prices,
-            attribution.classification,
-            config,
-        ),
+        volume_price=volume_price,
+        crowding=crowding,
+        valuation=valuation,
+        relative=relative,
         attribution=attribution,
-        fundamentals=compute_fundamentals(
-            _slice_statement(inputs.annual_financials, as_of_date),
-            _slice_statement(inputs.quarterly_financials, as_of_date),
-            _slice_statement(inputs.balance_sheet, as_of_date),
-            inputs.info,
-            config,
-        ),
-        analyst=compute_analyst(inputs.analyst_data, inputs.info, close, config),
-        days_to_next_earnings=_days_to_next_earnings(inputs.earnings_dates, as_of_date),
-        last_earnings_surprise_pct=_last_earnings_surprise(inputs.earnings_dates, as_of_date),
+        fundamentals=fundamentals,
+        analyst=analyst,
+        days_to_next_earnings=days_to_next_earnings,
+        last_earnings_surprise_pct=last_earnings_surprise_pct,
+        judgement=judgement,
         provenance=Provenance(
             provider=inputs.provider_name,
             freshness="EOD_OR_DELAYED",
@@ -473,6 +540,7 @@ def build_history_rows(
             {
                 "date": card.as_of.isoformat(),
                 "state": card.volume_price.state,
+                "stance": card.judgement.stance,
                 "crowding_score": card.crowding.crowding_score.value,
                 "classification": card.attribution.classification,
                 "close": card.close,

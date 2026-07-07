@@ -164,3 +164,66 @@ def current_return(prices: pd.DataFrame) -> float | None:
         return None
     return float(close.iloc[-1] / close.iloc[-2] - 1.0)
 
+
+def sma(close: pd.Series, window: int) -> pd.Series:
+    return pd.to_numeric(close, errors="coerce").rolling(
+        window=window, min_periods=window
+    ).mean()
+
+
+def pct_from_rolling_high(close: pd.Series, window: int) -> pd.Series:
+    numeric = pd.to_numeric(close, errors="coerce")
+    high = numeric.rolling(window=window, min_periods=window).max()
+    return numeric / high - 1.0
+
+
+def days_below_moving_average(close: pd.Series, moving_average: pd.Series) -> int | None:
+    aligned = pd.concat([close, moving_average], axis=1).dropna()
+    if aligned.empty:
+        return None
+    count = 0
+    for _, row in aligned.iloc[::-1].iterrows():
+        if row.iloc[0] < row.iloc[1]:
+            count += 1
+        else:
+            break
+    return count
+
+
+def price_state_series(prices: pd.DataFrame, config: object) -> pd.Series:
+    from stock_state.families.volume_price import _state
+
+    close = pd.to_numeric(prices["close"], errors="coerce")
+    volume = pd.to_numeric(prices["volume"], errors="coerce")
+    atr_values = atr(prices, getattr(config, "ATR_WINDOW"))
+    states: list[str] = []
+    for idx in range(len(prices)):
+        if idx < 1:
+            states.append("N/A")
+            continue
+        start = max(0, idx - getattr(config, "VOL_WINDOW") + 1)
+        volume_window = volume.iloc[start : idx + 1].dropna()
+        min_count = math.ceil(
+            getattr(config, "VOL_WINDOW") * getattr(config, "MIN_PCTL_COVERAGE")
+        )
+        volume_pct = (
+            percentile_rank(volume_window) if len(volume_window) >= min_count else None
+        )
+        prev_close = close.iloc[idx - 1]
+        atr_value = atr_values.iloc[idx]
+        atr_pct = (
+            float(atr_value / prev_close)
+            if pd.notna(atr_value) and pd.notna(prev_close) and prev_close != 0
+            else None
+        )
+        day_return = (
+            float(close.iloc[idx] / prev_close - 1.0)
+            if pd.notna(close.iloc[idx]) and pd.notna(prev_close) and prev_close != 0
+            else None
+        )
+        states.append(_state(day_return, atr_pct, volume_pct, config))
+    return pd.Series(states, index=prices.index, name="state")
+
+
+def count_state_days(states: pd.Series, state: str, window: int) -> int:
+    return int((states.tail(window) == state).sum())

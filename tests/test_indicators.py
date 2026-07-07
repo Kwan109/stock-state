@@ -8,8 +8,10 @@ from stock_state.indicators import (
     money_flow_index,
     obv_norm_slope,
     percentile_rank,
+    price_state_series,
     updown_vol_ratio,
 )
+from stock_state.config import DEFAULTS
 
 
 def test_percentile_rank_half_weight_ties() -> None:
@@ -41,3 +43,12 @@ def test_updown_ratio_caps_when_no_down_days(make_prices) -> None:
     prices = make_prices(20, daily_return=0.01)
     assert updown_vol_ratio(prices, 10, 10.0) == 10.0
 
+
+def test_price_state_series_matches_final_state(make_prices) -> None:
+    prices = make_prices(90, daily_return=0.001)
+    prices.iloc[-1, prices.columns.get_loc("close")] = prices["close"].iloc[-2] * 1.04
+    prices.iloc[-1, prices.columns.get_loc("high")] = prices["close"].iloc[-1] * 1.01
+    prices.iloc[-1, prices.columns.get_loc("low")] = prices["close"].iloc[-1] * 0.99
+    prices.iloc[-1, prices.columns.get_loc("volume")] = prices["volume"].max() * 5
+    states = price_state_series(prices, DEFAULTS)
+    assert states.iloc[-1] == "放量上涨"

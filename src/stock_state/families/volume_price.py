@@ -6,10 +6,15 @@ from stock_state.card import VolumePriceFamily, field, na
 from stock_state.config import Defaults
 from stock_state.indicators import (
     atr,
+    count_state_days,
     current_return,
+    days_below_moving_average,
     money_flow_index,
     obv_norm_slope,
+    pct_from_rolling_high,
+    price_state_series,
     rolling_latest_percentile,
+    sma,
     updown_vol_ratio,
 )
 
@@ -28,6 +33,12 @@ def compute_volume_price(prices: pd.DataFrame, config: Defaults) -> VolumePriceF
             momentum_3m=na("insufficient history"),
             momentum_6m=na("insufficient history"),
             momentum_12_1=na("insufficient history"),
+            sma50=na("insufficient history"),
+            sma200=na("insufficient history"),
+            pct_from_252d_high=na("insufficient history"),
+            days_below_sma200=na("insufficient history"),
+            hv_down_days_10d=na("insufficient history"),
+            hv_up_days_10d=na("insufficient history"),
         )
     close = pd.to_numeric(prices["close"], errors="coerce")
     volume = pd.to_numeric(prices["volume"], errors="coerce")
@@ -46,6 +57,10 @@ def compute_volume_price(prices: pd.DataFrame, config: Defaults) -> VolumePriceF
     dollar_volume = close.iloc[-1] * volume.iloc[-1]
     obv_slope = obv_norm_slope(prices, config.OBV_WINDOW)
     mfi = money_flow_index(prices, config.MFI_WINDOW).iloc[-1]
+    sma50_series = sma(close, config.SMA_MID)
+    sma200_series = sma(close, config.SMA_LONG)
+    pct_high_series = pct_from_rolling_high(close, config.HIGH_WINDOW)
+    states = price_state_series(prices, config)
     return VolumePriceFamily(
         state=state,
         volume_pct=field(volume_pct_value, "insufficient history"),
@@ -61,6 +76,20 @@ def compute_volume_price(prices: pd.DataFrame, config: Defaults) -> VolumePriceF
         momentum_3m=_momentum(prices, config.MOM_3M),
         momentum_6m=_momentum(prices, config.MOM_6M),
         momentum_12_1=_momentum_12_1(prices, config),
+        sma50=field(sma50_series.iloc[-1], "insufficient history"),
+        sma200=field(sma200_series.iloc[-1], "insufficient history"),
+        pct_from_252d_high=field(pct_high_series.iloc[-1], "insufficient history"),
+        days_below_sma200=field(
+            days_below_moving_average(close, sma200_series), "insufficient history"
+        ),
+        hv_down_days_10d=field(
+            count_state_days(states, "放量下跌", config.JUDGEMENT_HV_WINDOW),
+            "insufficient history",
+        ),
+        hv_up_days_10d=field(
+            count_state_days(states, "放量上涨", config.JUDGEMENT_HV_WINDOW),
+            "insufficient history",
+        ),
     )
 
 
@@ -122,4 +151,3 @@ def _momentum_12_1(prices: pd.DataFrame, config: Defaults):
     if pd.isna(recent) or pd.isna(base) or base == 0:
         return na("missing price")
     return field(recent / base - 1.0)
-

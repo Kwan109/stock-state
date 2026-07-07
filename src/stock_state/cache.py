@@ -29,6 +29,33 @@ def cache_dir(root: Path | str = ".") -> Path:
     return path
 
 
+def log_judgement_event(root: Path | str, card: Any) -> None:
+    base = cache_dir(root)
+    path = base / "judgement_log.parquet"
+    row = pd.DataFrame(
+        [
+            {
+                "date": str(card.as_of),
+                "ticker": card.ticker,
+                "stance": card.judgement.stance,
+                "risk_flags": ",".join(card.judgement.risk_flags),
+                "confidence_score": card.judgement.confidence_score,
+                "version": card.judgement.version,
+            }
+        ]
+    )
+    if path.exists():
+        existing = pd.read_parquet(path)
+        existing = existing[
+            ~(
+                (existing["date"].astype(str) == str(card.as_of))
+                & (existing["ticker"].astype(str) == card.ticker)
+            )
+        ]
+        row = pd.concat([existing, row], ignore_index=True)
+    row.sort_values(["date", "ticker"]).to_parquet(path, index=False)
+
+
 def previous_closed_weekday(today: date | None = None) -> date:
     current = today or datetime.now(timezone.utc).date()
     candidate = current - timedelta(days=1)

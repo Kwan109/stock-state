@@ -14,6 +14,7 @@ from stock_state.card import (
     build_stock_state_card,
     load_inputs,
 )
+from stock_state.cache import log_judgement_event
 from stock_state.config import DEFAULTS
 from stock_state.cross_section import compute_cross_section
 from stock_state.providers.base import ProviderError, ProviderNotAvailableError
@@ -33,7 +34,7 @@ from stock_state.render import (
 @click.option("--watchlist", type=click.Path(exists=True, dir_okay=False), help="YAML watchlist.")
 @click.option("--table", "as_table", is_flag=True, help="Render watchlist comparison table.")
 @click.option("--history", type=int, help="Render recent N-day state timeline.")
-@click.option("--explain", type=click.Choice(["volume_price", "crowding", "valuation", "relative", "attribution", "fundamentals", "analyst"]), help="Explain a family.")
+@click.option("--explain", type=click.Choice(["volume_price", "crowding", "valuation", "relative", "attribution", "fundamentals", "analyst", "judgement"]), help="Explain a family.")
 @click.option("--refresh", is_flag=True, help="Force cache refresh.")
 @click.option("--offline", is_flag=True, help="Read cache only.")
 @click.option("--provider", type=click.Choice(["yfinance", "ibkr"]), default="yfinance", show_default=True)
@@ -119,7 +120,12 @@ def _run_watchlist(
                 refresh=refresh,
                 offline=offline,
             )
-            cards.append(build_card_from_inputs(inputs, config=DEFAULTS))
+            card = build_card_from_inputs(inputs, config=DEFAULTS)
+            try:
+                log_judgement_event(".", card)
+            except Exception:
+                pass
+            cards.append(card)
         except Exception as exc:
             failures.append(f"{ticker}: {exc}")
     cross = compute_cross_section(cards, DEFAULTS)
@@ -169,4 +175,3 @@ def _print_failures(console: Console, failures: list[str]) -> None:
 
 if __name__ == "__main__":
     main()
-

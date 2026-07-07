@@ -18,6 +18,20 @@ def render_card(card: StockStateCard) -> Panel:
     )
     rows = [
         _line(
+            "判读",
+            f"{_headline(card)} · confidence {card.judgement.confidence}"
+            f"({card.judgement.confidence_score:.2f}) · "
+            f"entry {card.judgement.entry_context} · exit {card.judgement.exit_context}",
+        ),
+        _line(
+            "证据",
+            " | ".join(card.judgement.evidence[:3]) or "N/A",
+        ),
+        _line(
+            "风险",
+            ", ".join(card.judgement.risk_flags) if card.judgement.risk_flags else "none",
+        ),
+        _line(
             "量价状态",
             f"{card.volume_price.state}   量能分位 {num(card.volume_price.volume_pct)}  "
             f"OBV{_obv_arrow(card.volume_price.obv_trend)}  "
@@ -28,7 +42,8 @@ def render_card(card: StockStateCard) -> Panel:
             "动量",
             f"3月 {field_pct(card.volume_price.momentum_3m)}  "
             f"6月 {field_pct(card.volume_price.momentum_6m)}  "
-            f"12-1 {field_pct(card.volume_price.momentum_12_1)}",
+            f"12-1 {field_pct(card.volume_price.momentum_12_1)}  "
+            f"距高 {field_pct(card.volume_price.pct_from_252d_high)}",
         ),
         _line(
             "拥挤度",
@@ -100,11 +115,12 @@ def render_card(card: StockStateCard) -> Panel:
 
 def render_history(rows: list[dict[str, Any]]) -> Table:
     table = Table(title="状态时间线")
-    for column in ("date", "state", "crowding_score", "classification", "close", "volume_pct"):
+    for column in ("date", "stance", "state", "crowding_score", "classification", "close", "volume_pct"):
         table.add_column(column)
     for row in rows:
         table.add_row(
             str(row["date"]),
+            str(row.get("stance", "")),
             str(row["state"]),
             _raw(row["crowding_score"], 0),
             str(row["classification"]),
@@ -137,6 +153,8 @@ def render_watchlist_table(
         "ticker",
         "close",
         "day%",
+        "stance",
+        "flags",
         "state",
         "归因",
         "crowding",
@@ -155,6 +173,8 @@ def render_watchlist_table(
             card.ticker,
             money(card.close),
             pct(card.day_return_pct),
+            _headline(card),
+            str(len(card.judgement.risk_flags)),
             card.volume_price.state,
             card.attribution.classification,
             _rank(ranks, "crowding_score"),
@@ -172,6 +192,12 @@ def render_watchlist_table(
 def _line(label: str, body: str) -> Text:
     prefix = f"{label:<6}  " if label else " " * 10
     return Text(prefix, style="bold") + Text(body)
+
+
+def _headline(card: StockStateCard) -> str:
+    if card.judgement.earnings_overlay:
+        return f"earnings_risk_event({card.judgement.stance})"
+    return card.judgement.stance
 
 
 def _obv_arrow(trend: str | None) -> str:
@@ -234,4 +260,3 @@ def _rank(ranks: dict[str, object], field_name: str) -> str:
     if not isinstance(block, dict) or block.get("rank") is None:
         return "N/A"
     return f"{block['rank']}/{block['n_effective']}"
-
