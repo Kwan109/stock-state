@@ -71,7 +71,7 @@ class Defaults:
     JUDGEMENT_MIN_COVERAGE: float = 0.6
     NARRATOR_ENABLED: bool = True
     NARRATOR_PROVIDER: str = "anthropic"
-    NARRATOR_MODEL: str = "claude-sonnet-4-6"
+    NARRATOR_MODEL: str = "claude-sonnet-5"
     NARRATOR_OPENAI_MODEL: str = "gpt-5.5"
     NARRATOR_MAX_TOKENS: int = 1200
     NARRATOR_TEMPERATURE: float = 0.2

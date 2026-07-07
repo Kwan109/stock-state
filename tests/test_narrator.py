@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import sys
 from dataclasses import replace
+from types import SimpleNamespace
 
 from stock_state.card import build_stock_state_card
 from stock_state.config import DEFAULTS
 from stock_state.cross_section import compute_cross_section
 from stock_state.narrator.brief import generate_brief
+from stock_state.narrator.client import AnthropicNarratorClient
 from stock_state.narrator.digest import build_digest, compact_digest, digest_to_json
 from stock_state.narrator.validator import REQUIRED_CAVEAT, validate_brief
 from test_card import MockProvider
@@ -127,3 +130,29 @@ def test_generate_brief_without_key_does_not_block(make_prices, tmp_path, monkey
 
     assert result.available is False
     assert "missing ANTHROPIC_API_KEY" in result.text
+
+
+def test_anthropic_sonnet5_omits_temperature(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeMessages:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            block = SimpleNamespace(type="text", text="brief")
+            return SimpleNamespace(content=[block])
+
+    class FakeAnthropic:
+        def __init__(self, api_key: str) -> None:
+            self.api_key = api_key
+            self.messages = FakeMessages()
+
+    fake_module = SimpleNamespace(Anthropic=FakeAnthropic)
+    monkeypatch.setitem(sys.modules, "anthropic", fake_module)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    client = AnthropicNarratorClient(model="claude-sonnet-5")
+    text = client.generate(prompt="prompt", digest={"cards": []})
+
+    assert text == "brief"
+    assert calls[0]["model"] == "claude-sonnet-5"
+    assert "temperature" not in calls[0]

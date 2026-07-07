@@ -35,18 +35,20 @@ class AnthropicNarratorClient:
         except ImportError as exc:
             raise NarratorUnavailable("anthropic package is not installed") from exc
         client = Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model=self.model,
-            max_tokens=self.config.NARRATOR_MAX_TOKENS,
-            temperature=self.config.NARRATOR_TEMPERATURE,
-            system=prompt,
-            messages=[
+        kwargs = {
+            "model": self.model,
+            "max_tokens": self.config.NARRATOR_MAX_TOKENS,
+            "system": prompt,
+            "messages": [
                 {
                     "role": "user",
                     "content": json.dumps(digest, ensure_ascii=False, sort_keys=True),
                 }
             ],
-        )
+        }
+        if _anthropic_supports_temperature(self.model):
+            kwargs["temperature"] = self.config.NARRATOR_TEMPERATURE
+        response = client.messages.create(**kwargs)
         return "".join(
             getattr(block, "text", "")
             for block in response.content
@@ -104,3 +106,10 @@ def make_client(
         )
     raise NarratorUnavailable(f"unsupported narrator provider: {selected}")
 
+
+def _anthropic_supports_temperature(model: str) -> bool:
+    current_fixed_sampling_prefixes = (
+        "claude-sonnet-5",
+        "claude-opus-4-8",
+    )
+    return not model.startswith(current_fixed_sampling_prefixes)

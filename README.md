@@ -119,7 +119,7 @@ stock-state --watchlist ws.yaml --brief-only
 stock-state AAPL --brief --narrator-provider openai
 ```
 
-The default provider is Anthropic with `claude-sonnet-4-6`. OpenAI is available
+The default provider is Anthropic with `claude-sonnet-5`. OpenAI is available
 as a fallback provider. Without a key or when the API fails, the card/table still
 renders and the briefing shows a short unavailable message. Briefings are cached
 under `data_cache/briefings/` with the exact digest and meta audit files.
