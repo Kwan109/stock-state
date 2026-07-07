@@ -62,6 +62,8 @@ function renderCard(card) {
     <div class="metric-grid">
       ${metric("分类", card.attribution.classification, "优先级规则判定")}
       ${metric("特有风险", value(card.attribution.residual_vol_annualized, 1) + "%", "残差波动年化")}
+      ${metric("5日残差z", value(card.judgement.attribution_diagnostics?.residual_5d_z, 2), "序列诊断")}
+      ${metric("20日逆市/放大", `${value(card.judgement.attribution_diagnostics?.defiant_days_20d, 0)} / ${value(card.judgement.attribution_diagnostics?.amplifier_days_20d, 0)}`, "")}
     </div>
   `);
 
@@ -71,21 +73,23 @@ function renderCard(card) {
       ${metric("ATR/昨收", pctField(card.volume_price.atr_pct), "")}
       ${metric("OBV", `${value(card.volume_price.obv_norm_slope_20d, 2)} · ${card.volume_price.obv_trend || "N/A"}`, "")}
       ${metric("上下行量比", value(card.volume_price.updown_vol_ratio_10d, 2), "")}
-      ${metric("MFI", value(card.volume_price.mfi_14, 0), bar(card.volume_price.mfi_14))}
       ${metric("成交额", compactMoney(card.volume_price.dollar_volume.value), "")}
       ${metric("3月动量", pctField(card.volume_price.momentum_3m), "")}
       ${metric("6月动量", pctField(card.volume_price.momentum_6m), "")}
       ${metric("12-1动量", pctField(card.volume_price.momentum_12_1), "")}
+      ${metric("SMA50 / SMA200", `${moneyField(card.volume_price.sma50)} / ${moneyField(card.volume_price.sma200)}`, "")}
+      ${metric("距52周高点", pctField(card.volume_price.pct_from_252d_high), "")}
+      ${metric("低于SMA200天数", value(card.volume_price.days_below_sma200, 0), "")}
+      ${metric("10日放量涨/跌", `${value(card.volume_price.hv_up_days_10d, 0)} / ${value(card.volume_price.hv_down_days_10d, 0)}`, "")}
     </div>
   `);
 
   panel("panel-crowding", "拥挤度", `${value(card.crowding.crowding_score, 0)}/100`, `
     <div class="metric-grid">
-      ${metric("综合分", value(card.crowding.crowding_score, 0), bar(card.crowding.crowding_score, true))}
+      ${metric("综合分", value(card.crowding.crowding_score, 0), `${bar(card.crowding.crowding_score, true)}等权未验证`)}
       ${metric("换手", value(card.crowding.turnover_pct, 0), bar(card.crowding.turnover_pct))}
       ${metric("波动", value(card.crowding.rvol_pct, 0), bar(card.crowding.rvol_pct, true))}
       ${metric("乖离", value(card.crowding.extension_pct, 0), bar(card.crowding.extension_pct, true))}
-      ${metric("相关抬升", value(card.crowding.corr_uplift, 2), "")}
       ${metric("空头占比", value(card.crowding.short_percent_of_float, 1) + "%", "独立展示")}
     </div>
   `);
@@ -94,7 +98,6 @@ function renderCard(card) {
     <div class="metric-grid">
       ${metric("PE 分位", value(card.valuation.pe_ttm_pct, 0), bar(card.valuation.pe_ttm_pct, true))}
       ${metric("PS 分位", value(card.valuation.ps_ttm_pct, 0), bar(card.valuation.ps_ttm_pct, true))}
-      ${metric("EV/S 分位", value(card.valuation.ev_sales_pct, 0), bar(card.valuation.ev_sales_pct, true))}
       ${metric("当前 PE", value(card.valuation.pe_ttm_current, 1), "")}
       ${metric("当前 PS", value(card.valuation.ps_ttm_current, 1), "")}
       ${metric("历史深度", value(card.valuation.depth_years, 1) + "y", "")}
@@ -126,7 +129,7 @@ function renderCard(card) {
 
   panel("panel-analyst", "分析师面", `覆盖 ${value(card.analyst.n_analysts, 0)}`, `
     <div class="metric-grid">
-      ${metric("评级均值", value(card.analyst.recommendation_mean, 1), ratingCounts(card.analyst.rating_counts))}
+      ${metric("覆盖", value(card.analyst.n_analysts, 0), ratingCounts(card.analyst.rating_counts))}
       ${metric("目标均价", moneyField(card.analyst.target_mean), "")}
       ${metric("目标空间", pctField(card.analyst.target_upside_pct), "")}
       ${metric("前瞻PE", value(card.analyst.forward_pe, 1), "")}
@@ -136,6 +139,9 @@ function renderCard(card) {
       ${metric("说明", escapeHtml(card.analyst.note), "", "wide")}
     </div>
   `);
+
+  applyProfileTemplate(card);
+  renderDebug(card);
 }
 
 function panel(id, title, meta, body) {
@@ -153,19 +159,160 @@ function renderVerdict(card) {
   const headline = judgement.earnings_overlay
     ? `earnings_risk_event(${judgement.stance})`
     : judgement.stance;
+  const stanceNode = document.querySelector("#verdict-stance");
   text("#verdict-stance", headline);
   text("#verdict-caveat", judgement.caveat);
   text("#verdict-confidence", `${judgement.confidence} · ${Number(judgement.confidence_score).toFixed(2)}`);
   text(
     "#verdict-contexts",
-    `${judgement.trend_state} · ${judgement.tape_state} · ${judgement.rs_context} · ${judgement.attribution_context}`
+    `${judgement.profile_template || "default"} · ${judgement.trend_state} · ${judgement.tape_state} · ${judgement.rs_context} · ${judgement.attribution_context}`
   );
+  const rulePath = document.querySelector("#rule-path");
+  rulePath.hidden = true;
+  rulePath.innerHTML = renderRulePath(judgement);
+  stanceNode.onclick = () => {
+    rulePath.hidden = !rulePath.hidden;
+  };
+  stanceNode.onkeydown = (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      rulePath.hidden = !rulePath.hidden;
+    }
+  };
   document.querySelector("#risk-flags").innerHTML =
     judgement.risk_flags.length
       ? judgement.risk_flags.map((item) => chip(item)).join("")
       : '<span class="chip muted-chip">none</span>';
   document.querySelector("#evidence-list").innerHTML =
     judgement.evidence.slice(0, 4).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+}
+
+function renderRulePath(judgement) {
+  const diagnostics = judgement.attribution_diagnostics || {};
+  const rows = [
+    ["stance", judgement.stance],
+    ["entry", judgement.entry_context],
+    ["exit", judgement.exit_context],
+    ["trend", judgement.trend_state],
+    ["tape", judgement.tape_state],
+    ["crowding", judgement.crowding_risk],
+    ["valuation", judgement.valuation_context],
+    ["RS", judgement.rs_context],
+    ["attribution", judgement.attribution_context],
+    ["residual_5d_z", value(diagnostics.residual_5d_z, 2)],
+    ["amplifier/defiant", `${value(diagnostics.amplifier_days_20d, 0)} / ${value(diagnostics.defiant_days_20d, 0)}`],
+  ];
+  return `
+    <dl>
+      ${rows.map(([key, val]) => `<div><dt>${escapeHtml(key)}</dt><dd>${val}</dd></div>`).join("")}
+    </dl>
+    <ol>${judgement.evidence.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>
+  `;
+}
+
+function applyProfileTemplate(card) {
+  const profile = card.judgement.profile_template || profileTemplate(card);
+  const orders = {
+    default: ["panel-attribution", "panel-volume", "panel-crowding", "panel-valuation", "panel-relative", "panel-fundamentals", "panel-analyst"],
+    momentum_leader: ["panel-volume", "panel-relative", "panel-crowding", "panel-attribution", "panel-fundamentals", "panel-analyst", "panel-valuation"],
+    stable_compounder: ["panel-fundamentals", "panel-valuation", "panel-attribution", "panel-relative", "panel-volume", "panel-analyst", "panel-crowding"],
+    pre_profit: ["panel-fundamentals", "panel-valuation", "panel-attribution", "panel-volume", "panel-relative", "panel-crowding", "panel-analyst"],
+  };
+  const order = orders[profile] || orders.default;
+  document.querySelector(".dashboard").dataset.profile = profile;
+  order.forEach((id, index) => {
+    const node = document.querySelector(`#${id}`);
+    if (node) node.style.order = index + 1;
+  });
+  document.querySelector("#panel-valuation").classList.toggle("lower-priority", profile === "momentum_leader");
+  document.querySelector("#panel-volume").classList.toggle("lower-priority", profile === "stable_compounder");
+  document.querySelector("#panel-analyst").classList.toggle("lower-priority", profile === "pre_profit");
+}
+
+function profileTemplate(card) {
+  const rvol = card.crowding.rvol_pct.value;
+  const mom6 = card.volume_price.momentum_6m.value;
+  const beta = card.attribution.beta_market.value;
+  const dividend = card.fundamentals.dividend_yield.value;
+  const revenue = card.fundamentals.revenue_yoy_annual.value;
+  if (rvol != null && mom6 != null && beta != null && rvol >= 70 && mom6 > 0.15 && beta > 1.2) return "momentum_leader";
+  if (beta != null && dividend != null && beta < 0.9 && dividend > 0) return "stable_compounder";
+  if (card.valuation.pe_ttm_current.value == null && revenue != null && revenue > 0) return "pre_profit";
+  return "default";
+}
+
+function renderDebug(card) {
+  const judgement = card.judgement;
+  const diagnostics = judgement.attribution_diagnostics || {};
+  const naRows = collectNaReasons(card).slice(0, 18);
+  document.querySelector("#debug-content").innerHTML = `
+    <section>
+      <h2>Judgement Diagnostics</h2>
+      <div class="debug-grid">
+        ${debugRow("profile_template", judgement.profile_template || "default", "")}
+        ${debugRow("residual_5d_z", value(diagnostics.residual_5d_z, 2), "5日累计残差")}
+        ${debugRow("amplifier_days_20d", value(diagnostics.amplifier_days_20d, 0), "20日放大器天数")}
+        ${debugRow("defiant_days_20d", value(diagnostics.defiant_days_20d, 0), "20日逆市强势天数")}
+        ${debugRow("market_5d_return", pctField(diagnostics.market_5d_return), "市场5日回报")}
+      </div>
+    </section>
+    <section>
+      <h2>Explain-Layer Metrics</h2>
+      <div class="debug-grid">
+        ${debugRow("MFI", value(card.volume_price.mfi_14, 0), "量价辅助，首屏降级")}
+        ${debugRow("EV/S percentile", value(card.valuation.ev_sales_pct, 0), "静态债务近似")}
+        ${debugRow("recommendation_mean", value(card.analyst.recommendation_mean, 1), "低离散度")}
+        ${debugRow("corr_uplift", value(card.crowding.corr_uplift, 2), "体制漂移风险")}
+        ${debugRow("target_upside_pct", pctField(card.analyst.target_upside_pct), "价格滞后派生值")}
+      </div>
+    </section>
+    <section>
+      <h2>Rule Thresholds</h2>
+      <ul class="threshold-list">
+        <li>near_high: pct_from_252d_high >= -5%</li>
+        <li>distribution_pressure: hv_down_days_10d >= 3</li>
+        <li>too_hot: extension_pct >= 90 or hv_up_days_10d >= 4</li>
+        <li>earnings_overlay: days_to_next_earnings <= 5</li>
+        <li>confidence: 0.6 * coverage + 0.4 * consistency</li>
+      </ul>
+    </section>
+    <section>
+      <h2>NA Reasons</h2>
+      ${
+        naRows.length
+          ? `<ul class="threshold-list">${naRows.map((row) => `<li>${escapeHtml(row.path)}: ${escapeHtml(row.reason)}</li>`).join("")}</ul>`
+          : `<p class="debug-empty">none</p>`
+      }
+    </section>
+  `;
+}
+
+function debugRow(label, value, note) {
+  return `
+    <div class="debug-row">
+      <label>${escapeHtml(label)}</label>
+      <strong>${value}</strong>
+      ${note ? `<small>${escapeHtml(note)}</small>` : ""}
+    </div>
+  `;
+}
+
+function collectNaReasons(card) {
+  const out = [];
+  const families = ["volume_price", "crowding", "valuation", "relative", "attribution", "fundamentals", "analyst", "judgement"];
+  families.forEach((family) => collectNa(`${family}`, card[family], out));
+  collectNa("days_to_next_earnings", card.days_to_next_earnings, out);
+  collectNa("last_earnings_surprise_pct", card.last_earnings_surprise_pct, out);
+  return out;
+}
+
+function collectNa(path, value, out) {
+  if (!value || typeof value !== "object") return;
+  if ("value" in value && value.value == null && value.reason) {
+    out.push({ path, reason: value.reason });
+    return;
+  }
+  Object.entries(value).forEach(([key, child]) => collectNa(`${path}.${key}`, child, out));
 }
 
 function chip(item) {

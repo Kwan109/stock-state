@@ -132,15 +132,24 @@ class AnalystFamily(BaseModel):
     note: str = "snapshot-level consensus; limited history; coverage gaps possible"
 
 
+class AttributionDiagnosticsBlock(BaseModel):
+    residual_5d_z: NAField
+    amplifier_days_20d: NAField
+    defiant_days_20d: NAField
+    market_5d_return: NAField
+
+
 class JudgementBlock(BaseModel):
     stance: str
     earnings_overlay: bool
+    profile_template: str
     trend_state: str
     tape_state: str
     crowding_risk: str
     valuation_context: str
     rs_context: str
     attribution_context: str
+    attribution_diagnostics: AttributionDiagnosticsBlock
     risk_flags: list[str]
     entry_context: str
     exit_context: str

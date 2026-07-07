@@ -21,6 +21,7 @@ def render_card(card: StockStateCard) -> Panel:
             "判读",
             f"{_headline(card)} · confidence {card.judgement.confidence}"
             f"({card.judgement.confidence_score:.2f}) · "
+            f"profile {card.judgement.profile_template} · "
             f"entry {card.judgement.entry_context} · exit {card.judgement.exit_context}",
         ),
         _line(
@@ -36,7 +37,8 @@ def render_card(card: StockStateCard) -> Panel:
             f"{card.volume_price.state}   量能分位 {num(card.volume_price.volume_pct)}  "
             f"OBV{_obv_arrow(card.volume_price.obv_trend)}  "
             f"上下行量比 {num(card.volume_price.updown_vol_ratio_10d, 1)}  "
-            f"MFI {num(card.volume_price.mfi_14, 0)}",
+            f"放量涨/跌 {num(card.volume_price.hv_up_days_10d, 0)}/"
+            f"{num(card.volume_price.hv_down_days_10d, 0)}",
         ),
         _line(
             "动量",
@@ -50,8 +52,8 @@ def render_card(card: StockStateCard) -> Panel:
             f"{num(card.crowding.crowding_score, 0)}/100   "
             f"换手 {num(card.crowding.turnover_pct, 0)} | "
             f"波动 {num(card.crowding.rvol_pct, 0)} | "
-            f"乖离 {num(card.crowding.extension_pct, 0)} | "
-            f"相关抬升 {num(card.crowding.corr_uplift, 2)}",
+            f"乖离 {num(card.crowding.extension_pct, 0)} "
+            "(等权未验证)",
         ),
         _line(
             "",
@@ -68,8 +70,6 @@ def render_card(card: StockStateCard) -> Panel:
         _line(
             "分析师面",
             f"覆盖 {num(card.analyst.n_analysts, 0)} · "
-            f"均值 {num(card.analyst.recommendation_mean, 1)}"
-            f"({_rating_label(card.analyst.recommendation_mean.value)}) · "
             f"目标价 {money_field(card.analyst.target_mean)}"
             f"({field_pct(card.analyst.target_upside_pct)}) · "
             f"前瞻PE {num(card.analyst.forward_pe, 1)} · "
@@ -79,8 +79,7 @@ def render_card(card: StockStateCard) -> Panel:
         _line(
             "估值分位",
             f"PE {num(card.valuation.pe_ttm_pct, 0)} | "
-            f"PS {num(card.valuation.ps_ttm_pct, 0)} | "
-            f"EV/S {num(card.valuation.ev_sales_pct, 0)}   "
+            f"PS {num(card.valuation.ps_ttm_pct, 0)}   "
             f"(对自身 {num(card.valuation.depth_years, 1)} 年历史; "
             f"当前PE {num(card.valuation.pe_ttm_current, 1)})",
         ),
@@ -99,6 +98,13 @@ def render_card(card: StockStateCard) -> Panel:
             f"(z={num(card.attribution.residual_z, 1)}, "
             f"R²={num(card.attribution.r_squared, 2)}, "
             f"ω={field_number(card.attribution.residual_vol_annualized, 1)}%)",
+        ),
+        _line(
+            "归因序列",
+            f"5日残差z {num(card.judgement.attribution_diagnostics.residual_5d_z, 2)} · "
+            f"20日放大器 {num(card.judgement.attribution_diagnostics.amplifier_days_20d, 0)} · "
+            f"逆市强势 {num(card.judgement.attribution_diagnostics.defiant_days_20d, 0)} · "
+            f"市场5日 {field_pct(card.judgement.attribution_diagnostics.market_5d_return)}",
         ),
         _line(
             "财报事件",
@@ -202,18 +208,6 @@ def _headline(card: StockStateCard) -> str:
 
 def _obv_arrow(trend: str | None) -> str:
     return {"rising": "↑", "falling": "↓", "flat": "→"}.get(trend or "", "?")
-
-
-def _rating_label(value: float | None) -> str:
-    if value is None:
-        return "N/A"
-    if value <= 1.8:
-        return "买入"
-    if value <= 2.5:
-        return "偏多"
-    if value <= 3.5:
-        return "持有"
-    return "偏空"
 
 
 def num(value: NAField, digits: int = 0) -> str:

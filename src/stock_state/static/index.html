@@ -52,8 +52,9 @@
       <section class="verdict-band">
         <div class="verdict-main">
           <span class="eyebrow">Judgement</span>
-          <strong id="verdict-stance">-</strong>
+          <strong id="verdict-stance" role="button" tabindex="0">-</strong>
           <p id="verdict-caveat">规则型技术判读，未经前向收益验证</p>
+          <div id="rule-path" class="rule-path" hidden></div>
         </div>
         <div class="confidence-box">
           <span class="eyebrow">Confidence</span>
@@ -78,6 +79,13 @@
         <section class="panel" id="panel-relative"></section>
         <section class="panel" id="panel-fundamentals"></section>
         <section class="panel" id="panel-analyst"></section>
+      </section>
+
+      <section class="debug-panel">
+        <details>
+          <summary>Debug / Explain</summary>
+          <div id="debug-content" class="debug-content"></div>
+        </details>
       </section>
     </main>
     <script src="/static/app.js"></script>

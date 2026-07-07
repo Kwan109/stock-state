@@ -18,6 +18,15 @@ The implementation keeps the original contracts:
 - Card JSON includes `judgement`, a deterministic rule-based technical
   interpretation block with stance, evidence, risk flags, entry/exit context,
   and confidence.
+- Judgement JSON includes profile template and attribution sequence diagnostics
+  (`residual_5d_z`, `amplifier_days_20d`, `defiant_days_20d`,
+  `market_5d_return`) so sequence-based rulings are auditable.
+- The UI separates decision-surface metrics from explain/debug metrics. MFI,
+  EV/S, recommendation mean, target upside, and correlation uplift are shown in
+  the Debug / Explain drawer rather than driving the headline.
+- Relative accumulation during market pressure cannot produce
+  `actionable_long`; capitulation flushes remain `avoid_until_reclaim` until
+  trend repair.
 - Watchlist cross-section ranks are computed after cards are complete and do
   not mutate card bodies.
 

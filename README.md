@@ -33,6 +33,16 @@ These are rule-based technical labels, not trading instructions. The caveat is
 included in JSON and UI: confidence measures evidence coverage/consistency, not
 forward return probability.
 
+The judgement block also exposes attribution sequence diagnostics used by the
+rules: `residual_5d_z`, `amplifier_days_20d`, `defiant_days_20d`, and
+`market_5d_return`. This keeps the headline auditable instead of hiding the
+sequence layer inside the engine.
+
+Market-pressure relative accumulation is intentionally conservative: it can
+upgrade the context to `constructive_watch`, but it cannot produce
+`actionable_long` by itself. Capitulation flushes are also descriptive only and
+remain `avoid_until_reclaim` until long-term trend repair.
+
 ## Install
 
 ```bash
@@ -68,6 +78,13 @@ stock-state-web --host 127.0.0.1 --port 8765
 
 Open the local UI at `http://127.0.0.1:8765`. It uses the same card builder as
 the CLI and exposes `GET /api/card?ticker=AAPL`.
+
+The UI includes a verdict band, profile-aware panel ordering
+(`momentum_leader`, `stable_compounder`, `pre_profit`, or `default`), and a
+Debug / Explain drawer. Explain-layer metrics such as MFI, EV/S,
+recommendation mean, target upside, and correlation uplift are kept out of the
+main decision surface and shown in that drawer with key thresholds and NA
+reasons.
 
 Each single-card or watchlist run appends an idempotent row to
 `data_cache/judgement_log.parquet` with ticker, date, stance, flags, confidence,

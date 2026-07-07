@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import numpy as np
 import pandas as pd
 
 from stock_state.card import (
@@ -63,6 +64,26 @@ def test_extended_do_not_chase_overrides_breakout(make_prices) -> None:
     assert judgement.stance == "extended_do_not_chase"
 
 
+def test_market_pressure_relative_accumulation_blocks_actionable(
+    make_prices, prices_from_returns
+) -> None:
+    n = 170
+    alternating_noise = np.where(np.arange(n) % 2 == 0, 0.002, -0.002)
+    market_returns = np.full(n, 0.0002) + alternating_noise
+    stock_returns = np.full(n, 0.001) + market_returns + alternating_noise * 0.5
+    market_returns[-5:] = -0.01
+    stock_returns[-5:] = 0.004
+    judgement = _judge(
+        make_prices,
+        prices=prices_from_returns(stock_returns),
+        market_prices=prices_from_returns(market_returns),
+    )
+    assert judgement.attribution_context == "relative_accumulation"
+    assert judgement.stance == "constructive_watch"
+    assert "relative_accumulation" in judgement.risk_flags
+    assert judgement.attribution_diagnostics.residual_5d_z.value is not None
+
+
 def test_cheap_valuation_does_not_override_idiosyncratic_weakness(make_prices) -> None:
     judgement = _judge(
         make_prices,
@@ -71,6 +92,50 @@ def test_cheap_valuation_does_not_override_idiosyncratic_weakness(make_prices) -
     )
     assert judgement.valuation_context == "cheap_vs_history"
     assert judgement.stance == "distribution_risk"
+
+
+def test_supply_drying_pullback_is_constructive_pullback_zone(make_prices) -> None:
+    judgement = _judge(
+        make_prices,
+        prices=make_prices(260, daily_return=0.00019),
+        volume_price=_vp(state="缩量下跌", sma50=110, sma200=100, pct_from_high=-0.08),
+    )
+    assert judgement.trend_state == "uptrend_pullback"
+    assert judgement.tape_state == "supply_drying_pullback"
+    assert judgement.entry_context == "pullback_zone"
+    assert judgement.stance == "constructive_watch"
+
+
+def test_capitulation_flush_is_avoid_until_reclaim_with_watch_evidence(make_prices) -> None:
+    judgement = _judge(
+        make_prices,
+        close=80,
+        volume_price=_vp(
+            state="放量下跌",
+            sma50=90,
+            sma200=100,
+            pct_from_high=-0.55,
+            days_below=4,
+            hv_down=0,
+        ),
+        crowding=_crowding(extension=5),
+    )
+    assert judgement.tape_state == "capitulation_flush"
+    assert judgement.stance == "avoid_until_reclaim"
+    assert any("capitulation_watch" in item for item in judgement.evidence)
+
+
+def test_insufficient_history_forces_low_confidence(make_prices) -> None:
+    volume_price = _vp().model_copy(
+        update={
+            "sma50": na("insufficient history"),
+            "sma200": na("insufficient history"),
+        }
+    )
+    judgement = _judge(make_prices, volume_price=volume_price)
+    assert judgement.trend_state == "insufficient_history"
+    assert judgement.stance == "data_insufficient"
+    assert judgement.confidence == "low"
 
 
 def test_hv_down_threshold_is_config_driven(make_prices) -> None:
@@ -94,13 +159,15 @@ def _judge(
     attribution: AttributionFamily | None = None,
     days_to_earnings: int | None = 30,
     close: float | None = None,
+    prices: pd.DataFrame | None = None,
+    market_prices: pd.DataFrame | None = None,
     config=DEFAULTS,
 ):
-    prices = make_prices(260, daily_return=0.001)
+    prices = prices.copy() if prices is not None else make_prices(260, daily_return=0.001)
     if close is not None:
         prices.iloc[-1, prices.columns.get_loc("close")] = close
     current_close = float(prices["close"].iloc[-1] if close is None else close)
-    market = make_prices(260, daily_return=0.0005)
+    market = market_prices.copy() if market_prices is not None else make_prices(260, daily_return=0.0005)
     return evaluate_judgement(
         as_of=pd.Timestamp("2026-01-01").date(),
         close=current_close,

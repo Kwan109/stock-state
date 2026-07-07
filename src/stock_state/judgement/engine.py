@@ -10,6 +10,7 @@ import pandas as pd
 
 from stock_state.card import (
     AnalystFamily,
+    AttributionDiagnosticsBlock,
     AttributionFamily,
     CrowdingFamily,
     FundamentalsFamily,
@@ -57,6 +58,7 @@ def evaluate_judgement(
     valuation_context = _valuation_context(valuation, config)
     rs_context = _rs_context(relative, config)
     attribution_context = _attribution_context(attribution, diagnostics, config)
+    profile_template = _profile_template(crowding, volume_price, attribution, fundamentals, valuation)
     risk_flags = _risk_flags(
         sector=sector,
         volume_price=volume_price,
@@ -118,12 +120,14 @@ def evaluate_judgement(
     return JudgementBlock(
         stance=stance,
         earnings_overlay=earnings_overlay,
+        profile_template=profile_template,
         trend_state=trend_state,
         tape_state=tape_state,
         crowding_risk=crowding_risk,
         valuation_context=valuation_context,
         rs_context=rs_context,
         attribution_context=attribution_context,
+        attribution_diagnostics=_diagnostics_block(diagnostics),
         risk_flags=risk_flags,
         entry_context=entry_context,
         exit_context=exit_context,
@@ -393,6 +397,8 @@ def _risk_flags(
         flags.append("high_leverage")
     if diagnostics.amplifier_days_20d is not None and diagnostics.amplifier_days_20d >= 2:
         flags.append("amplifier_pattern")
+    if attribution_context == "relative_accumulation":
+        flags.append("relative_accumulation")
     if attribution_context == "idiosyncratic_weakness":
         flags.append("idio_bleed")
     if valuation.pe_ttm_pct.value is not None and valuation.pe_ttm_pct.value >= config.JUDGEMENT_VERY_RICH_PCTL:
@@ -470,6 +476,8 @@ def _stance(
     _ = extension
     if trend_state == "insufficient_history" or attribution_context == "unknown":
         return "data_insufficient", "trend or attribution unavailable"
+    if tape_state == "capitulation_flush":
+        return "avoid_until_reclaim", "capitulation_watch; wait for SMA200 reclaim"
     if days_below is not None and hv_down is not None:
         if 1 <= days_below <= config.JUDGEMENT_BREAKDOWN_MAX_DAYS and hv_down >= 1:
             return "breakdown_risk", f"days_below_sma200={days_below:.0f}, hv_down_days_10d={hv_down:.0f}"
@@ -493,8 +501,15 @@ def _stance(
         and tape_state == "demand_confirmation"
         and _near_high(volume_price, config)
         and rs_context in {"leader", "improving"}
-        and attribution_context not in {"idiosyncratic_weakness", "amplified_downside"}
+        and attribution_context
+        not in {"idiosyncratic_weakness", "amplified_downside", "relative_accumulation"}
     )
+    if (
+        trend_state == "strong_uptrend"
+        and tape_state == "demand_confirmation"
+        and attribution_context == "relative_accumulation"
+    ):
+        return "constructive_watch", "relative_accumulation blocks actionable during market pressure"
     if base_breakout and crowding_risk != "extreme":
         if _earnings_overlay(days_to_next_earnings, config):
             return "constructive_watch", "otherwise actionable_long, blocked by earnings window"
@@ -551,6 +566,8 @@ def _confidence(
                 conflicts += 1
     conflicts = min(conflicts, 3)
     score = 0.6 * coverage + 0.4 * (1.0 - conflicts / 3.0)
+    if trend_state == "insufficient_history" or attribution_context == "unknown":
+        return round(score, 4), "low"
     if coverage < config.JUDGEMENT_MIN_COVERAGE:
         return round(score, 4), "low"
     if score >= config.JUDGEMENT_CONF_HIGH:
@@ -582,6 +599,10 @@ def _evidence(
         )
     if diagnostics.residual_5d_z is not None:
         items.append(f"residual_5d_z={diagnostics.residual_5d_z:+.2f}")
+    if tape_state == "capitulation_flush":
+        items.append("capitulation_watch: high-volume flush below long-term trend")
+    if attribution_context == "relative_accumulation":
+        items.append("relative_accumulation: strength during market pressure; not actionable alone")
     items.append(
         f"crowding={crowding_risk}; valuation={valuation_context}; "
         f"rs={rs_context}; attribution={attribution_context}"
@@ -601,6 +622,44 @@ def _earnings_overlay(days_to_next_earnings: NAField, config: Defaults) -> bool:
         days_to_next_earnings.value is not None
         and days_to_next_earnings.value <= config.JUDGEMENT_EARNINGS_WINDOW_DAYS
     )
+
+
+def _profile_template(
+    crowding: CrowdingFamily,
+    volume_price: VolumePriceFamily,
+    attribution: AttributionFamily,
+    fundamentals: FundamentalsFamily,
+    valuation: ValuationFamily,
+) -> str:
+    rvol = crowding.rvol_pct.value
+    mom6 = volume_price.momentum_6m.value
+    beta = attribution.beta_market.value
+    dividend = fundamentals.dividend_yield.value
+    revenue = fundamentals.revenue_yoy_annual.value
+    pe_current = valuation.pe_ttm_current.value
+    if rvol is not None and mom6 is not None and beta is not None:
+        if rvol >= 70.0 and mom6 > 0.15 and beta > 1.2:
+            return "momentum_leader"
+    if beta is not None and dividend is not None and beta < 0.9 and dividend > 0:
+        return "stable_compounder"
+    if pe_current is None and revenue is not None and revenue > 0:
+        return "pre_profit"
+    return "default"
+
+
+def _diagnostics_block(diagnostics: AttributionDiagnostics) -> AttributionDiagnosticsBlock:
+    return AttributionDiagnosticsBlock(
+        residual_5d_z=_diag_field(diagnostics.residual_5d_z),
+        amplifier_days_20d=_diag_field(diagnostics.amplifier_days_20d),
+        defiant_days_20d=_diag_field(diagnostics.defiant_days_20d),
+        market_5d_return=_diag_field(diagnostics.market_5d_return),
+    )
+
+
+def _diag_field(value: float | int | None) -> NAField:
+    if value is None:
+        return NAField(value=None, reason="insufficient attribution sequence")
+    return NAField(value=float(value))
 
 
 def _classification(
